@@ -8,3 +8,4 @@ out/
 .DS_Store
 .mongodb-binaries/
 .turbo/
+*.tsbuildinfo
