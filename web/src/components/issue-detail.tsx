@@ -65,7 +65,7 @@ export function IssueDetail({ wsId, issueId }: { wsId: string; issueId: string }
             </span>
           )}
           {others.slice(0, 4).map((v) => (
-            <Avatar key={v.id} name={v.name} color={v.color} size={20} ring />
+            <Avatar key={v.id} name={v.name} username={v.username} color={v.color} size={20} ring />
           ))}
           {others.length > 0 && (
             <span className="sr-only">{others.map((o) => o.name).join(', ')} viewing now</span>

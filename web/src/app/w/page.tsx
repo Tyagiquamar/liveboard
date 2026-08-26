@@ -24,7 +24,7 @@ export default function WorkspacesPage() {
     <div className="mx-auto max-w-2xl px-4 py-16">
       <header className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Avatar name={me?.name ?? '?'} size={32} />
+          <Avatar name={me?.name ?? '?'} username={me?.username} size={32} />
           <div>
             <div className="text-sm font-semibold">{me?.name}</div>
             <div className="text-xs text-ink-faint">@{me?.username}</div>

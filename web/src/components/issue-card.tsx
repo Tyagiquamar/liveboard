@@ -64,7 +64,7 @@ export function IssueCard({ issue }: { issue: Issue }) {
           )}
           {!pending && <time className="text-[10px] text-ink-faint">{relTime(issue.updatedAt)}</time>}
           {assignee ? (
-            <Avatar name={assignee.name} color={assignee.color} size={20} />
+            <Avatar name={assignee.name} username={assignee.username} color={assignee.color} size={20} />
           ) : me ? (
             <Avatar name="" color="#26272e" size={20} />
           ) : null}

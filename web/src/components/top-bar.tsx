@@ -90,7 +90,7 @@ export function TopBar({ wsId }: { wsId: string }) {
 
         <div className="flex -space-x-1.5" aria-label={`${onlineOthers.length} online`}>
           {(presence ?? []).slice(0, 5).map((u) => (
-            <Avatar key={u.id} name={u.name} color={u.color} ring size={22} />
+            <Avatar key={u.id} name={u.name} username={u.username} color={u.color} ring size={22} />
           ))}
           {(presence ?? []).length > 5 && (
             <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-hoverbg text-[10px] font-semibold text-ink-muted ring-2 ring-panel">
@@ -100,7 +100,7 @@ export function TopBar({ wsId }: { wsId: string }) {
           {!presence && (
             <>
               {(members.data?.items ?? []).slice(0, 4).map((m) =>
-                m.user ? <Avatar key={m.id} name={m.user.name} color={m.user.color} ring size={22} className="opacity-50" /> : null
+                m.user ? <Avatar key={m.id} name={m.user.name} username={m.user.username} color={m.user.color} ring size={22} className="opacity-50" /> : null
               )}
             </>
           )}
@@ -109,7 +109,7 @@ export function TopBar({ wsId }: { wsId: string }) {
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button aria-label="Account menu" className="rounded-full focus-visible:outline-accent">
-              <Avatar name={me?.name ?? '?'} size={26} color={me?.color} />
+              <Avatar name={me?.name ?? '?'} username={me?.username} size={26} color={me?.color} />
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>

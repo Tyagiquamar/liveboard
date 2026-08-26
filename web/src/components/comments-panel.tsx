@@ -100,7 +100,7 @@ function renderBody(body: string): React.ReactNode[] {
 function CommentItem({ comment, author }: { comment: Comment; author?: Member['user'] }) {
   return (
     <article className="flex gap-2.5">
-      <Avatar name={author?.name ?? '?'} color={author?.color} size={28} className="mt-0.5" />
+      <Avatar name={author?.name ?? '?'} username={author?.username} color={author?.color} size={28} className="mt-0.5" />
       <div className="min-w-0 flex-1 rounded-lg bg-canvas px-3 py-2">
         <header className="flex items-baseline gap-2">
           <span className="text-sm font-medium">{author?.name ?? 'Member'}</span>

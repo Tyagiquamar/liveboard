@@ -51,7 +51,8 @@ router.post(
   })
 )
 
-const DemoSchema = z.object({ username: z.enum(['alice', 'bob', 'carol'] as const).optional() })
+const DemoSchema = z
+  .object({ username: z.enum(['alice', 'bob', 'carol', 'dave'] as const).optional() })
 
 router.post(
   '/demo',

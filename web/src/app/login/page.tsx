@@ -7,6 +7,13 @@ import { useSession, type Me } from '@/lib/store'
 
 type Mode = 'login' | 'register'
 
+const DEMO_USERS = [
+  { username: 'alice', name: 'Alice Nguyen' },
+  { username: 'bob', name: 'Bob Marín' },
+  { username: 'carol', name: 'Carol Diaz' },
+  { username: 'dave', name: 'Dave Okafor' }
+] as const
+
 export default function LoginPage() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
@@ -32,13 +39,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-2.5">
+        <div className="mb-6 flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">L</span>
           <div>
             <div className="text-lg font-semibold tracking-tight">LiveBoard</div>
             <div className="text-xs text-ink-muted">Real-time collaborative workspace</div>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-accent/30 bg-panel p-5 shadow-xl">
+          <h1 className="text-sm font-semibold">Try the live demo</h1>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
+            Pick an identity to jump straight into the seeded <span className="text-ink-muted">Acme Product Team</span> workspace.
+            Open a second browser window as another member to watch changes sync in real time.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {DEMO_USERS.map((u) => (
+              <button
+                key={u.username}
+                disabled={busy}
+                onClick={() => void enter('/auth/demo', { username: u.username })}
+                className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-2 text-left transition-colors hover:border-accent/60 hover:bg-raise disabled:opacity-50"
+              >
+                <img src={`/avatars/${u.username}.svg`} alt="" width={28} height={28} className="shrink-0 rounded-full" />
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium">{u.name}</span>
+                  <span className="block text-[10px] text-ink-faint">@{u.username}</span>
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -87,7 +118,7 @@ export default function LoginPage() {
             <Field label="Email">
               <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </Field>
-            <Field label="Password">
+            <Field label="Password" hint="demo accounts: demo1234">
               <input
                 className={inputCls}
                 type="password"
@@ -108,21 +139,6 @@ export default function LoginPage() {
               {busy ? '…' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </form>
-
-          <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-wider text-ink-faint">
-            <span className="h-px flex-1 bg-line" /> or try the demo <span className="h-px flex-1 bg-line" />
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            {(['alice', 'bob', 'carol'] as const).map((u) => (
-              <button key={u} disabled={busy} onClick={() => void enter('/auth/demo', { username: u })} className="btn-ghost capitalize">
-                {u}
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-faint">
-            Demo seeds “Acme Inc”. Open two browsers as different users to watch live collaboration.
-          </p>
         </div>
       </div>
     </div>

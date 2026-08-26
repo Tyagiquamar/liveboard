@@ -84,7 +84,7 @@ export function Sidebar({ wsId }: { wsId: string }) {
           {(members.data?.items ?? []).map((m) =>
             m.user ? (
               <li key={m.id} className="flex items-center gap-2 text-sm text-ink-muted">
-                <Avatar name={m.user.name} color={m.user.color} size={20} />
+                <Avatar name={m.user.name} username={m.user.username} color={m.user.color} size={20} />
                 <span className="truncate">{m.user.name}</span>
                 {m.role === 'owner' && <span className="ml-auto text-[10px] text-ink-faint">owner</span>}
               </li>
