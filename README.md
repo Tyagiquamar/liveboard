@@ -8,6 +8,10 @@ Real-time collaborative project workspace — a lightweight Linear × Notion whe
 
 *Left window is Alice, right is Bob. The "Rate-limit the auth endpoints" card was dragged into In Progress in Alice's window — it moved live in Bob's. Presence avatars (top right) show who's online.*
 
+## Live demo
+
+**https://liveboard-red.vercel.app** — a frontend-only **demo mode**: the UI runs against an in-browser mock backend with the same seeded Acme data. Pick an identity, drag cards, comment — changes are real to the UI, persist across reloads (localStorage) and sync live across tabs of *the same browser* (open the board in two tabs, side by side). A banner marks demo mode at all times. Cross-browser/multi-user collaboration, presence and typing need the real backend: run it locally with `docker compose up --build` (below).
+
 ## What it demonstrates
 
 - **Live multi-client sync over WebSockets** — every mutation appends to a per-workspace event log with a monotonic `seq` and fans out to room-scoped subscribers; other clients apply the event to their cache without refetching.
@@ -25,6 +29,8 @@ Real-time collaborative project workspace — a lightweight Linear × Notion whe
 3. **Open a second browser window** (or normal + incognito) and pick a different identity.
 4. Drag a card in one window → watch it fly in the other. Presence avatars appear top-right; open the same issue in both and you'll see each other's viewer chip and typing dots.
 5. Comment with `@mentions` — the mentioned user gets a toast. Switch **Table** view for inline editing, **Activity** for the live event feed. `⌘K` opens the command menu, `?` shows shortcuts.
+
+(On the Vercel demo deployment, step 3 means a second *tab of the same browser* — see Live demo above.)
 
 ## Architecture
 
@@ -110,24 +116,24 @@ Actual results on the development machine (Node v24, mongo:7 container):
 - `npm test` → **7/7 passing** (`consistency.test.ts`: convergence + byte-equal streams, cursor-pagination continuity under reordering, search+cursor composition, presence removal on unsubscribe, exact reconnect replay window, idempotency, version conflicts, isolation/authz)
 - `npm run typecheck` → clean (server + web)
 - `npm run build:web` → succeeds, all 8 routes compile
+- `WEB_URL=http://localhost:3000 node scripts/two-window.mjs` → **7/7 checks pass** (two-browser realtime suite described above)
+- `WEB_URL=<vercel-url> node scripts/demo-check.mjs` → **11/11 checks pass against the deployed demo mode** (picker, 28 seeded cards, demo banner, drag, cross-tab live sync, reload persistence, zero console errors)
 
 The suite prefers `TEST_MONGO_URI` (any throwaway Mongo) and falls back to `mongodb-memory-server`.
 
 ## Deployment
 
-Designed for a split deploy: **API + Socket.IO on any long-running host** (Railway/Fly/VPS — not serverless), **MongoDB Atlas or equivalent**, **web on Vercel**.
+Full split-deploy runbook (API on a long-running host, Mongo, web on Vercel): **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
-1. Provision Mongo (Atlas free tier works). Note the URI.
-2. Deploy `server/` (it has a Dockerfile; start command `npx tsx src/main.ts`) with env:
-   - `MONGO_URI=<your-uri>` · `JWT_SECRET=<random>` · `CLIENT_ORIGIN=https://<your-vercel-domain>` · `PORT=4000`
-3. Deploy `web/` to Vercel with env:
-   - `NEXT_PUBLIC_API_URL=https://<api-host>/api` · `NEXT_PUBLIC_WS_URL=https://<api-host>`
-4. Verify: `GET https://<api-host>/api/health`, then run `WEB_URL=<vercel-url> node scripts/two-window.mjs` for the two-browser collaboration check against production.
+Current hosting status:
 
-> Status: no hosted demo URL right now — Railway trial expired on the owner account (the API host + DB provider planned for this deployment). Everything above is prepared and locally verified end-to-end; the hosted URL is one plan activation away.
+- **Web (demo mode)**: live on Vercel — https://liveboard-red.vercel.app (built with `NEXT_PUBLIC_DEMO=1`; no backend required).
+- **API + Socket.IO**: **not hosted** — the Railway trial on the owner account expired and Socket.IO needs a long-running host (not serverless). To bring the full multi-user demo online: renew Railway/Render (or use Fly/VPS), provision Mongo, and follow docs/DEPLOY.md — everything is prepared and verified locally.
 
 ## Known limitations
 
+- **No hosted multi-user demo** — the Socket.IO backend needs a long-running host and the owner's Railway trial expired; the Vercel deployment therefore runs in demo mode (in-browser mock, single browser). See Deployment above.
+- Demo mode is a mock: no cross-browser sync, presence shows only you, data lives in localStorage per browser.
 - Presence/typing/viewers are in-memory (per instance); scale beyond one API instance requires the Redis adapter (wired behind `REDIS_URL`, but presence registries themselves aren't shared yet).
 - Replay cap of 2000 events falls back to a full refetch rather than partial application.
 - No email verification/password reset; demo-grade auth.
