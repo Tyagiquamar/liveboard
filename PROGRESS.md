@@ -64,3 +64,14 @@ and timestamped entries are appended to the build log at the bottom.
   - Web production build (`next build`): succeeds, all 8 routes compile
   - Infra: `docker-compose.yml` (mongo + redis + server + web with healthchecks), Dockerfiles for both apps, README with quickstart/architecture/test instructions
 - **Build complete.** LiveBoard is runnable via `docker compose up --build`, or locally per README. The two-client consistency proof lives at `server/test/consistency.test.ts`.
+- **2026-08-26 12:20** — Portfolio-completion sprint:
+  - Fixed broken `npm run seed` entrypoint (`src/seed.ts` was missing; script referenced a nonexistent file) and rebuilt the demo tenant: workspace **Acme Product Team**, 4 users (Alice Nguyen, Bob Marín, Carol Diaz, Dave Okafor), 3 projects (PLAT/WEB/MOB), 28 issues, 12 mention-threaded comments, 43 activity events. Idempotent + verified twice.
+  - **Real bug fixed:** issues cursor pagination used `_id`-only continuation cursors under non-id-aligned sorts → pages could skip/duplicate rows when updates reordered them mid-scroll. Replaced with proper keyset cursors (sort-field value + `_id` tiebreak); regression-tested for `updated`/`priority` sorts and search+cursor composition.
+  - **Real bug fixed:** `ws.unsubscribe` left stale presence registry entries until disconnect; roster now drops the user and rebroadcasts (tested).
+  - **Claim made true:** replay-cap truncation now triggers client-side refetch fallback (`onTruncate` → cache invalidation) instead of silently ignoring the ack flag.
+  - Deterministic SVG avatars committed (`web/public/avatars/*.svg`, colors from the server's `colorFor` palette); identity picker on the login screen is now the primary CTA with avatar + full name.
+  - Compose ports parameterized via `LB_*` env vars (defaults unchanged).
+  - Two-window E2E (`web/scripts/two-window.mjs`, Playwright): **7/7 checks pass locally** — login/board load, cross-client presence, live drag sync, persistence across reload, reconnect resync after forced offline gap, live comment sync, mobile viewport.
+  - Screenshots captured from the E2E run into `docs/screenshots/` (collaboration hero = two windows side-by-side, kanban, table, comment thread w/ mentions, mobile 390×844).
+  - Gates: server tests **7/7**, typechecks clean (server+web), `next build` succeeds, `docker compose config` valid.
+  - Deployment: Railway blocked — trial expired on the owner account (`railway init` fails before project creation). Fallback shipped: Dockerfiles, parameterized compose, `.env.example` templates for web/root/server, health endpoint, seed command, exact split-deploy docs in README. No hosted URL claimed.

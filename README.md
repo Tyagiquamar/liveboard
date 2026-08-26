@@ -1,124 +1,134 @@
 # LiveBoard
 
-Real-time collaborative project workspace — lightweight Linear × Notion collaboration, not a static task app.
+Real-time collaborative project workspace — a lightweight Linear × Notion where two (or more) people drag cards, edit issues and comment in the same board and every change lands on everyone's screen instantly.
 
-Next.js · React · TypeScript · Node.js · Socket.IO · MongoDB · Redis pub/sub (optional) · Docker
+**Next.js 14 · TypeScript · Socket.IO · Express · MongoDB · Redis pub/sub (optional) · Docker**
 
----
+![Two browser windows collaborating live: dragging a card in one appears instantly in the other](docs/screenshots/collaboration.png)
 
-## Quick start (Docker)
+*Left window is Alice, right is Bob. The "Rate-limit the auth endpoints" card was dragged into In Progress in Alice's window — it moved live in Bob's. Presence avatars (top right) show who's online.*
 
-```bash
-docker compose up --build
-```
+## What it demonstrates
 
-- Web: http://localhost:3000
-- API + WebSocket: http://localhost:4000
+- **Live multi-client sync over WebSockets** — every mutation appends to a per-workspace event log with a monotonic `seq` and fans out to room-scoped subscribers; other clients apply the event to their cache without refetching.
+- **Reconnect resync** — clients keep a per-workspace seq watermark; on reconnect they re-subscribe with `sinceSeq` and receive exactly the missed events as an ordered batch (regression-tested server-side). If the gap exceeds 2000 events the replay truncates and the client falls back to refetching lists.
+- **Presence, typing indicators, per-issue viewers** — in-memory registries keyed by socket id (multi-tab safe), membership-checked per workspace.
+- **Optimistic UX with conflict handling** — React Query cache patched instantly; every write carries an idempotency key (`clientRequestId`); stale `baseVersion` writes get `409 { current }`; offline writes queue in a persistent outbox and flush idempotently.
+- **Workspace isolation & authz** — JWT verified on the Socket.IO handshake *and* membership re-checked on every room join; REST routes check membership on every request; non-members get 403/404 (tested).
+- **Cursor pagination everywhere** — keyset cursors (sort field + `_id` tiebreak) for issues list/search/sort, comments, and activity; pages stay stable while rows change underneath (regression-tested).
+- **Two-client consistency proof** — a test boots the real HTTP+Socket.IO server against a throwaway Mongo and asserts two concurrent clients converge to byte-identical event streams and final state.
 
-Open the app in two browsers, click **alice** / **bob** on the login screen, and watch board moves, comments,
-typing dots, presence avatars and activity sync live between the two clients.
+## Product walkthrough
 
-## Quick start (local dev)
-
-```bash
-# 1. infrastructure
-docker compose up -d mongo redis        # or point MONGO_URI at any MongoDB 6+
-
-# 2. server
-cd server && npm install && cp .env.example .env
-npm run seed                            # creates Acme Inc + demo users (pw: demo1234)
-npm run dev                             # http://localhost:4000
-
-# 3. web
-cd ../web && npm install
-npm run dev                             # http://localhost:3000
-```
-
-## The proof: two clients → one consistent server state
-
-```bash
-docker run -d --name lb-test-mongo -p 28017:27017 mongo:7   # or export TEST_MONGO_URI
-cd server
-TEST_MONGO_URI=mongodb://127.0.0.1:28017/liveboard-test npm test
-```
-
-`server/test/consistency.test.ts` boots the real HTTP+Socket.IO server against a fresh DB and asserts:
-
-1. **Identical event streams** — two authenticated socket clients subscribe to the same workspace; after
-   interleaved writes from both users (issue creates, a concurrent status move and a comment), both clients
-   have received byte-identical JSON events with the same strictly-increasing per-workspace `seq`, zero
-   duplicates.
-2. **Convergence** — reducing each client's own event stream into local issue state produces exactly the same
-   documents the server returns over REST (`title/status/order/version/assigneeId`). No client is allowed to
-   drift; there is no local-only state.
-3. **Idempotent mutations** — replaying the same `clientRequestId` returns the original result instead of
-   creating a duplicate.
-4. **Conflict strategy** — a stale `baseVersion` write gets `409` plus the current document.
-5. **Isolation & auth** — non-members are rejected by REST (`403`) and by the WS subscription ack; unauthenticated
-   WS handshakes fail.
+1. Open the app → **identity picker**: pick **Alice Nguyen**, **Bob Marín**, **Carol Diaz** or **Dave Okafor** (no signup needed for the demo).
+2. You land in the seeded **Acme Product Team** workspace — Kanban board with 28 realistic issues across Platform / Web App / Mobile projects.
+3. **Open a second browser window** (or normal + incognito) and pick a different identity.
+4. Drag a card in one window → watch it fly in the other. Presence avatars appear top-right; open the same issue in both and you'll see each other's viewer chip and typing dots.
+5. Comment with `@mentions` — the mentioned user gets a toast. Switch **Table** view for inline editing, **Activity** for the live event feed. `⌘K` opens the command menu, `?` shows shortcuts.
 
 ## Architecture
 
 ```
-web/            Next.js 14 App Router SPA-style dashboard
-  lib/api       fetch wrapper: bearer auth, x-client-request-id idempotency keys,
-                offline detection → persistent outbox (zustand persist)
-  lib/socket    Socket.IO singleton: JWT handshake, seen-id LRU dedupe, per-workspace
-                lastSeq watermark, auto re-subscribe + catch-up replay on reconnect
-  lib/events    server events → React Query cache pipeline (upserts, comment counts,
-                activity prepend, mention toasts), dirty-edit guards
-  components    Kanban (dnd-kit), table view, issue drawer, comments w/ @mentions,
-                command menu (cmdk), presence/typing/viewers UI
-server/
-  routes        REST: auth, workspaces/members/activity, projects,
-                issues (cursor pagination, search/filter/sort), comments
-  services      activity log (atomic per-ws sequence via counter collection),
-                idempotency store, seed data
-  realtime      Socket.IO gateway: membership-checked rooms (`ws:<id>`),
-                presence, typing timers, issue viewers, ordered replay
+┌────────────────────┐   REST (fetch)      ┌──────────────────────┐
+│  web/  Next.js 14  │ ──────────────────▶ │ server/  Express     │
+│  App Router SPA    │   Socket.IO (WS)    │  REST routes         │
+│                    │ ◀────────────────── │  zod validation      │
+│  React Query cache │                     ├──────────────────────┤
+│  zustand stores    │   'event' pushes    │  Socket.IO gateway   │
+│  outbox (offline)  │◀──────────────────  │   jwt handshake      │
+└────────────────────┘  per-ws rooms       │   presence/typing    │
+                                           │   seq replay         │
+        MongoDB ◀──── mongoose ────────────┤  activity log        │
+        Redis ◀──── optional adapter ──────┘  (per-ws monotonic)  │
+        (multi-instance fanout)                                 │
+                                                                │
+                              every mutation ──▶ appendEvent() ─┘
+                              { id, seq, type, actor, data, ts }
 ```
 
-### Event contract
-
-Every persisted mutation appends an activity event:
-
-```jsonc
-{
-  "id": "66f…",            // unique event id (clients dedupe on this)
-  "seq": 12,               // strictly increasing per workspace (replay cursor)
-  "workspaceId": "…",
-  "type": "issue.updated",
-  "actor": { "id": "…", "name": "Alice", "color": "#f97316" },
-  "entityId": "…",         // issue/comment/project/member id
-  "data": { … },           // type-specific payload incl. full fresh entity doc
-  "ts": "2026-08-24T…"
-}
-```
-
-Events fan out only inside `ws:<workspaceId>` rooms. Reconnecting clients send their last `seq`
-(`ws.subscribe { sinceSeq }`) and receive everything they missed as an ordered `event.batch` before going live;
-beyond a 2000-event cap the client falls back to refetching lists.
-
-### Engineering decisions
+Every persisted mutation appends an activity event `{id, seq, type, actor, entityId, data, ts}` — this doubles as the realtime payload, the activity feed, and the reconnect-replay source. Events fan out only inside `ws:<workspaceId>` rooms.
 
 | Concern | Strategy |
 | --- | --- |
-| Optimistic mutations | React Query cache patched instantly; every write carries `clientRequestId`; rollback on hard errors; offline writes keep optimistic state and flush later. |
-| Duplicate protection | Client-side seen-set LRU on event ids; server-side idempotency keys return stored results for retried writes. |
-| Conflict strategy | Metadata/status/order = last-write-wins (version bumps each write). Title/description edits send `baseVersion` → `409 { current }` lets the user rebase consciously. |
-| Reconnect handling | Socket auto-reconnect + `sinceSeq` replay + outbox flush on reconnect; global connection banner mirrors state. |
-| WS authorization | JWT verified in handshake middleware; room joins re-check workspace membership per subscription. |
-| Workspace isolation | Membership checked on every REST route and every WS subscription; non-member reads/writes 403/404. |
-| Pagination | Opaque cursors everywhere: issues list/search, comments, activity feed. |
-| Presence/typing/viewers | In-memory registries keyed by socket id (multi-tab safe); typing auto-expires server-side; Redis adapter wired behind `REDIS_URL` for multi-instance fanout. |
+| Optimistic mutations | Cache patched immediately, rolled back on hard errors; offline writes keep optimistic state in a persisted outbox |
+| Duplicate protection | Client-side seen-id LRU on events; server-side idempotency keys replay stored results |
+| Conflict strategy | Status/order/metadata = last-write-wins (version bumps); title/description edits send `baseVersion` → `409 { current }` rebase UX |
+| Reconnect | Auto-reconnect + `sinceSeq` replay + outbox flush; connection banner mirrors state |
+| WS authz | JWT in handshake middleware; membership re-check on every subscribe |
+| Pagination | Opaque keyset cursors (field value + `_id` tiebreaker), never offsets |
 
-## Keyboard shortcuts
+## Demo data
 
-`⌘K/Ctrl K` command menu · `/` focus search · `c` new issue · `b` board · `t` table · `g b/t/a` go-to chord · `?` cheat sheet · `Esc` close
+`npm run seed` (in `server/`) creates the deterministic demo tenant: workspace **Acme Product Team**, users **Alice Nguyen / Bob Marín / Carol Diaz / Dave Okafor** (password `demo1234`, or just use the identity picker), 3 projects, 28 issues across backlog/todo/in-progress/done, and 12 comments with @mention threads plus a full activity feed. It is idempotent — re-running never duplicates.
+
+## Run locally
+
+Docker (whole stack):
+
+```bash
+docker compose up --build          # web :3000 · api+ws :4000 · mongo :27017 · redis :6379
+# override ports/secret via .env — see .env.example
+```
+
+Dev mode:
+
+```bash
+# 1. infrastructure
+docker compose up -d mongo
+
+# 2. API + WebSocket
+cd server && npm install && cp .env.example .env
+npm run seed                       # demo workspace + users
+npm run dev                        # http://localhost:4000
+
+# 3. web
+cd ../web && npm install && cp .env.example .env.local
+npm run dev                        # http://localhost:3000
+```
+
+Then open http://localhost:3000, pick Alice in one window and Bob in another.
+
+### Two-window E2E check
+
+With the stack running (web on `WEB_URL`), the repo includes the same script used for the screenshots above — it logs in as two identities, drags a card in one window, asserts it appears in the other, checks presence, reload persistence, reconnect-after-offline resync, and live comment sync:
+
+```bash
+cd web && npm i -D playwright                 # browsers: set PLAYWRIGHT_BROWSERS_PATH if needed
+WEB_URL=http://localhost:3000 node scripts/two-window.mjs
+```
 
 ## Tests
 
 ```bash
-npm test          # consistency suite (see above)
-npm run typecheck # tsc across server & web
+npm test            # at repo root — runs the server consistency suite
+npm run typecheck   # tsc across server & web
+npm run build:web   # next build
 ```
+
+Actual results on the development machine (Node v24, mongo:7 container):
+
+- `npm test` → **7/7 passing** (`consistency.test.ts`: convergence + byte-equal streams, cursor-pagination continuity under reordering, search+cursor composition, presence removal on unsubscribe, exact reconnect replay window, idempotency, version conflicts, isolation/authz)
+- `npm run typecheck` → clean (server + web)
+- `npm run build:web` → succeeds, all 8 routes compile
+
+The suite prefers `TEST_MONGO_URI` (any throwaway Mongo) and falls back to `mongodb-memory-server`.
+
+## Deployment
+
+Designed for a split deploy: **API + Socket.IO on any long-running host** (Railway/Fly/VPS — not serverless), **MongoDB Atlas or equivalent**, **web on Vercel**.
+
+1. Provision Mongo (Atlas free tier works). Note the URI.
+2. Deploy `server/` (it has a Dockerfile; start command `npx tsx src/main.ts`) with env:
+   - `MONGO_URI=<your-uri>` · `JWT_SECRET=<random>` · `CLIENT_ORIGIN=https://<your-vercel-domain>` · `PORT=4000`
+3. Deploy `web/` to Vercel with env:
+   - `NEXT_PUBLIC_API_URL=https://<api-host>/api` · `NEXT_PUBLIC_WS_URL=https://<api-host>`
+4. Verify: `GET https://<api-host>/api/health`, then run `WEB_URL=<vercel-url> node scripts/two-window.mjs` for the two-browser collaboration check against production.
+
+> Status: no hosted demo URL right now — Railway trial expired on the owner account (the API host + DB provider planned for this deployment). Everything above is prepared and locally verified end-to-end; the hosted URL is one plan activation away.
+
+## Known limitations
+
+- Presence/typing/viewers are in-memory (per instance); scale beyond one API instance requires the Redis adapter (wired behind `REDIS_URL`, but presence registries themselves aren't shared yet).
+- Replay cap of 2000 events falls back to a full refetch rather than partial application.
+- No email verification/password reset; demo-grade auth.
+- Soft-deleted issues are filtered from all views but not purged or restorable from the UI.
