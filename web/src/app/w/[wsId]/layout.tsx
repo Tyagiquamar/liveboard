@@ -29,6 +29,14 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      {process.env.NEXT_PUBLIC_DEMO === '1' && (
+        <div
+          role="note"
+          className="flex items-center justify-center gap-2 bg-warn/15 px-3 py-1 text-center text-[11px] font-medium text-warn"
+        >
+          Demo mode — synthetic data stored in your browser. Changes sync live across tabs of this browser only.
+        </div>
+      )}
       <TopBar wsId={wsId} />
       <div className="flex min-h-0 flex-1">
         <Sidebar wsId={wsId} />

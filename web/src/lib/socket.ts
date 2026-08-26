@@ -34,8 +34,16 @@ class LiveSocket {
   private handlers = new Set<EventHandler>()
   private truncateHandlers = new Set<(wsId: string) => void>()
   private lastTypingSent = 0
+  private demoUser: { id: string; name: string; username: string; color: string } | null = null
 
   connect(token: string): void {
+    if (process.env.NEXT_PUBLIC_DEMO === '1') {
+      import('./demo').then(({ demoUserFor }) => {
+        this.demoUser = demoUserFor(token)
+      })
+      useConn.getState().setStatus('online')
+      return
+    }
     if (this.socket) return
     useConn.getState().setStatus('connecting')
     const socket = io(WS_URL, {
@@ -121,6 +129,11 @@ class LiveSocket {
 
   subscribe(wsId: string): void {
     this.subscribed.add(wsId)
+    if (process.env.NEXT_PUBLIC_DEMO === '1') {
+      // demo: no server presence registry — you are the only one online
+      if (this.demoUser) useRealtime.getState().applyPresence(wsId, [this.demoUser])
+      return
+    }
     if (this.socket?.connected) this.sendSubscribe(wsId)
   }
 
@@ -138,6 +151,10 @@ class LiveSocket {
   onTruncate(h: (wsId: string) => void): () => void {
     this.truncateHandlers.add(h)
     return () => this.truncateHandlers.delete(h)
+  }
+
+  injectEvent(e: EventJSON): void {
+    this.onEvent(e)
   }
 
   private onEvent(e: EventJSON): void {

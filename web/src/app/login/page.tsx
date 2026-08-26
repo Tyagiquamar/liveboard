@@ -73,6 +73,12 @@ export default function LoginPage() {
           </div>
         </div>
 
+        {process.env.NEXT_PUBLIC_DEMO === '1' ? (
+          <p className="text-center text-[11px] leading-relaxed text-ink-faint">
+            This deployment runs in demo mode — the hosted backend is not part of it.
+            Clone the repo and run <code className="text-ink-muted">docker compose up</code> for the full stack.
+          </p>
+        ) : (
         <div className="rounded-xl border border-line bg-panel p-5 shadow-xl">
           <div className="mb-4 flex rounded-lg bg-canvas p-1" role="tablist" aria-label="Auth mode">
             {(['login', 'register'] as const).map((m) => (
@@ -140,6 +146,7 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
+        )}
       </div>
     </div>
   )

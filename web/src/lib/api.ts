@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-interface ApiOpts {
+export interface ApiOpts {
   method?: string
   body?: unknown
   key?: string
@@ -33,6 +33,10 @@ function authHeaders(key?: string): Record<string, string> {
 }
 
 export async function api<T>(path: string, opts: ApiOpts = {}): Promise<T> {
+  if (process.env.NEXT_PUBLIC_DEMO === '1') {
+    const { demoApi } = await import('./demo')
+    return demoApi<T>(path, opts)
+  }
   const method = opts.method ?? 'GET'
   let res: Response
   try {

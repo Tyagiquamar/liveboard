@@ -40,6 +40,12 @@ function Bootstrap() {
   useEffect(() => {
     useSession.getState().markHydrated()
     if (!token) return
+    if (process.env.NEXT_PUBLIC_DEMO === '1') {
+      import('@/lib/demo').then(({ demoUserFor }) => {
+        useSession.getState().setAuth(token, demoUserFor(token))
+      })
+      return
+    }
     fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api'}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` }
     })
