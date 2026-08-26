@@ -64,10 +64,11 @@ function subscribe(socket: Socket, workspaceId: string, sinceSeq?: number): Prom
   error?: string
   lastSeq?: number
   presence?: unknown[]
+  truncated?: boolean
 }> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('subscribe timeout')), 8000)
-    socket.emit('ws.subscribe', { workspaceId, sinceSeq }, (res: { ok: boolean; error?: string; lastSeq?: number; presence?: unknown[] }) => {
+    socket.emit('ws.subscribe', { workspaceId, sinceSeq }, (res: { ok: boolean; error?: string; lastSeq?: number; presence?: unknown[]; truncated?: boolean }) => {
       clearTimeout(t)
       resolve(res)
     })
@@ -369,4 +370,255 @@ describe('two clients on one workspace converge to identical server state', () =
     expect(err.message).toBe('unauthorized')
     sock.close()
   })
+})
+
+describe('issues cursor pagination stays consistent across pages', () => {
+  async function setupWorkspace(username: string): Promise<{ token: string; workspaceId: string; projectId: string }> {
+    const token = await register(app, {
+      email: `${username}@test.dev`,
+      name: username,
+      username,
+      password: 'secret123'
+    })
+    const wsRes = await request(app)
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: `Pagination WS ${username}` })
+    expect(wsRes.status).toBe(201)
+    const workspaceId = wsRes.body.workspace.id as string
+    const projectsRes = await request(app)
+      .get(`/api/workspaces/${workspaceId}/projects`)
+      .set('Authorization', `Bearer ${token}`)
+    return { token, workspaceId, projectId: projectsRes.body.items[0].id as string }
+  }
+
+  async function fetchAll(
+    token: string,
+    workspaceId: string,
+    query: string
+  ): Promise<Array<Record<string, unknown>>> {
+    const res = await request(app)
+      .get(`/api/workspaces/${workspaceId}/issues?limit=200&${query}`)
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    return res.body.items as Array<Record<string, unknown>>
+  }
+
+  async function pageThrough(
+    token: string,
+    workspaceId: string,
+    query: string,
+    limit: number
+  ): Promise<string[]> {
+    const seen: string[] = []
+    let cursor: string | null = null
+    let requests = 0
+    for (;;) {
+      const res = await request(app)
+        .get(
+          `/api/workspaces/${workspaceId}/issues?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}&${query}`
+        )
+        .set('Authorization', `Bearer ${token}`)
+      expect(res.status).toBe(200)
+      const items = res.body.items as Array<Record<string, unknown>>
+      seen.push(...items.map((i) => i.id as string))
+      requests++
+      cursor = res.body.nextCursor as string | null
+      if (!cursor) break
+      if (requests > 20) throw new Error('pagination did not terminate')
+    }
+    return seen
+  }
+
+  it('sort=updated pages cover every issue exactly once even when updates reorder rows', async () => {
+    const { token, workspaceId, projectId } = await setupWorkspace('pagu')
+    const ids: string[] = []
+    for (const title of ['U one', 'U two', 'U three', 'U four', 'U five', 'U six', 'U seven']) {
+      const r = await request(app)
+        .post(`/api/workspaces/${workspaceId}/issues`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ projectId, title })
+      expect(r.status).toBe(201)
+      ids.push(r.body.issue.id as string)
+    }
+
+    // update the OLDEST issue so its updatedAt jumps ahead of its _id position
+    const stale = await request(app)
+      .patch(`/api/issues/${ids[0]}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'U one (bumped)' })
+    expect(stale.status).toBe(200)
+
+    const expected = (await fetchAll(token, workspaceId, 'sort=updated')).map((i) => i.id as string)
+    const paged = await pageThrough(token, workspaceId, 'sort=updated', 2)
+    expect(paged).toEqual(expected)
+    expect(new Set(paged).size).toBe(ids.length)
+    expect(expected[0]).toBe(ids[0])
+  })
+
+  it('sort=priority and search+cursor compose without duplicates or skips', async () => {
+    const { token, workspaceId, projectId } = await setupWorkspace('pagp')
+    const ids: string[] = []
+    for (const title of ['P alpha', 'P bravo', 'P charlie', 'P delta', 'P echo', 'P foxtrot']) {
+      const r = await request(app)
+        .post(`/api/workspaces/${workspaceId}/issues`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ projectId, title })
+      expect(r.status).toBe(201)
+      ids.push(r.body.issue.id as string)
+    }
+    // priorities deliberately uncorrelated with creation order
+    for (const [idx, priority] of [3, 0, 4, 1].entries()) {
+      const r = await request(app)
+        .patch(`/api/issues/${ids[idx]}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ priority })
+      expect(r.status).toBe(200)
+    }
+
+    const expected = (await fetchAll(token, workspaceId, 'sort=priority')).map((i) => i.id as string)
+    expect(expected[0]).toBe(ids[2]) // priority 4 first
+    const paged = await pageThrough(token, workspaceId, 'sort=priority', 2)
+    expect(paged).toEqual(expected)
+
+    // search predicate combined with keyset cursor
+    const searchedExpected = (
+      await fetchAll(token, workspaceId, 'sort=updated&q=P+')
+    ).map((i) => i.id as string)
+    const searchedPaged = await pageThrough(token, workspaceId, 'sort=updated&q=P+', 2)
+    expect(searchedPaged).toEqual(searchedExpected)
+    expect(searchedPaged).toHaveLength(6)
+  })
+
+  it('presence drops a user from the workspace roster on ws.unsubscribe', async () => {
+    const tokenA = await register(app, {
+      email: 'presa@test.dev',
+      name: 'Pres A',
+      username: 'presa',
+      password: 'secret123'
+    })
+    const tokenB = await register(app, {
+      email: 'presb@test.dev',
+      name: 'Pres B',
+      username: 'presb',
+      password: 'secret123'
+    })
+    const meB = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${tokenB}`)
+    const bId = meB.body.user.id as string
+
+    const wsRes = await request(app)
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ name: 'Presence WS' })
+    const workspaceId = wsRes.body.workspace.id as string
+    await request(app)
+      .post(`/api/workspaces/${workspaceId}/members`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ username: 'presb' })
+
+    const sockA = connectClient(url, tokenA)
+    const sockB = connectClient(url, tokenB)
+    await Promise.all([
+      new Promise<void>((r) => sockA.on('connect', r)),
+      new Promise<void>((r) => sockB.on('connect', r))
+    ])
+
+    const presenceEvents: Array<Array<{ id: string }>> = []
+    sockB.on('presence', (p: { users: Array<{ id: string }> }) => presenceEvents.push(p.users))
+
+    await subscribe(sockA, workspaceId)
+    await subscribe(sockB, workspaceId)
+
+    const idA = await userIdOf(tokenA)
+    sockA.emit('ws.unsubscribe', { workspaceId })
+
+    const start = Date.now()
+    while (Date.now() - start < 5000) {
+      const last = presenceEvents[presenceEvents.length - 1]
+      if (last && !last.some((u) => u.id === idA)) break
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    const final = presenceEvents[presenceEvents.length - 1]
+    expect(final).toBeDefined()
+    expect(final.some((u) => u.id === idA)).toBe(false)
+    expect(final.map((u) => u.id)).toContain(bId)
+
+    sockA.close()
+    sockB.close()
+
+    async function userIdOf(token: string): Promise<string> {
+      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`)
+      return me.body.user.id as string
+    }
+  }, 20000)
+})
+
+describe('reconnecting client replays exactly the events it missed', () => {
+  it('delivers the missed window in order on re-subscribe with sinceSeq', async () => {
+    const tokenA = await register(app, {
+      email: 'recon-a@test.dev',
+      name: 'Recon A',
+      username: 'recona',
+      password: 'secret123'
+    })
+    const wsRes = await request(app)
+      .post('/api/workspaces')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ name: 'Reconnect WS' })
+    const workspaceId = wsRes.body.workspace.id as string
+    const projectsRes = await request(app)
+      .get(`/api/workspaces/${workspaceId}/projects`)
+      .set('Authorization', `Bearer ${tokenA}`)
+    const projectId = projectsRes.body.items[0].id as string
+
+    const post = (title: string) =>
+      request(app)
+        .post(`/api/workspaces/${workspaceId}/issues`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ projectId, title })
+
+    // session 1: subscribe, observe two live events
+    const sock1 = connectClient(url, tokenA)
+    await new Promise<void>((r) => sock1.on('connect', r))
+    const seen: number[] = []
+    sock1.on('event', (e: EventJSON) => seen.push(e.seq))
+    const ack1 = await subscribe(sock1, workspaceId, 0)
+    expect(ack1.ok).toBe(true)
+
+    await post('R one')
+    await post('R two')
+    const start = Date.now()
+    while (seen.length < 2 && Date.now() - start < 8000) await new Promise((r) => setTimeout(r, 40))
+    expect(seen.length).toBe(2)
+    const lastSeenSeq = Math.max(...seen)
+    sock1.disconnect() // simulate a drop
+
+    // writes that happen while the client is gone
+    await post('R three')
+    await post('R four')
+
+    // session 2: reconnect with sinceSeq = last seen watermark
+    const sock2 = connectClient(url, tokenA)
+    await new Promise<void>((r) => sock2.on('connect', r))
+    const replayed: EventJSON[] = []
+    sock2.on('event.batch', (batch: EventJSON[]) => replayed.push(...batch))
+    sock2.on('event', (e: EventJSON) => replayed.push(e))
+
+    const ack2 = await subscribe(sock2, workspaceId, lastSeenSeq)
+    expect(ack2.ok).toBe(true)
+    expect(ack2.truncated).toBeFalsy()
+
+    const start2 = Date.now()
+    while (
+      !replayed.some((e) => e.data && (e.data.issue as { title?: string })?.title === 'R four') &&
+      Date.now() - start2 < 8000
+    ) {
+      await new Promise((r) => setTimeout(r, 40))
+    }
+    const missed = replayed.filter((e) => e.seq > lastSeenSeq)
+    expect(missed.map((e) => e.seq)).toEqual([lastSeenSeq + 1, lastSeenSeq + 2])
+    expect(missed.map((e) => (e.data.issue as { title: string }).title)).toEqual(['R three', 'R four'])
+
+    sock2.close()
+  }, 30000)
 })

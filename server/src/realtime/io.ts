@@ -51,6 +51,19 @@ class Presence {
     return isNewUser
   }
 
+  leave(wsId: string, sid: string): boolean {
+    const sidEntry = this.bySid.get(sid)
+    if (!sidEntry || !sidEntry.wsIds.has(wsId)) return false
+    sidEntry.wsIds.delete(wsId)
+    const users = this.byWs.get(wsId)
+    const entry = users?.get(sidEntry.user.id)
+    if (!users || !entry) return false
+    entry.sids.delete(sid)
+    if (entry.sids.size === 0) users.delete(sidEntry.user.id)
+    if (users.size === 0) this.byWs.delete(wsId)
+    return entry.sids.size === 0
+  }
+
   leaveAll(sid: string): { user: PresenceUser; wsIds: string[] } | null {
     const entry = this.bySid.get(sid)
     if (!entry) return null
@@ -250,6 +263,9 @@ export class RealtimeHub {
       const workspaceId = payload?.workspaceId ?? ''
       socket.data.rooms.delete(workspaceId)
       void socket.leave(`ws:${workspaceId}`)
+      if (/^[a-f\d]{24}$/i.test(workspaceId) && this.presence.leave(workspaceId, socket.id)) {
+        this.broadcastPresence(`ws:${workspaceId}`, workspaceId)
+      }
     })
 
     socket.on(

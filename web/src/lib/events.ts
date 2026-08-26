@@ -103,7 +103,12 @@ function insertIssueEverywhere(qc: QueryClient, wsId: string, issue: Issue): voi
 }
 
 export function attachEventListener(qc: QueryClient): () => void {
-  return lbs.onEvents((ev: EventJSON) => {
+  const offTruncate = lbs.onTruncate((wsId) => {
+    // replay was capped — the partial batch was dropped server-side, refetch everything
+    void qc.invalidateQueries({ queryKey: ['issues', wsId] })
+    void qc.invalidateQueries({ queryKey: ['activity', wsId] })
+  })
+  const offEvents = lbs.onEvents((ev: EventJSON) => {
     prependActivity(qc, ev)
 
     switch (ev.type) {
@@ -144,6 +149,10 @@ export function attachEventListener(qc: QueryClient): () => void {
         break
     }
   })
+  return () => {
+    offEvents()
+    offTruncate()
+  }
 }
 
 export const internal = {

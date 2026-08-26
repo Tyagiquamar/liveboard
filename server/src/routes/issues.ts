@@ -29,6 +29,92 @@ async function topOrder(workspaceId: string, status: Status): Promise<number> {
   return (min?.order ?? 0) - ORDER_STEP
 }
 
+interface SortPair {
+  field: string
+  dir: 1 | -1
+  cast: 'date' | 'number' | 'string' | 'id'
+}
+
+function sortPairsFor(sort: string, dir: 1 | -1): SortPair[] {
+  switch (sort) {
+    case 'created':
+      return [
+        { field: 'createdAt', dir, cast: 'date' },
+        { field: '_id', dir, cast: 'id' }
+      ]
+    case 'priority':
+      return [
+        { field: 'priority', dir, cast: 'number' },
+        { field: '_id', dir, cast: 'id' }
+      ]
+    case 'title':
+      return [
+        { field: 'title', dir, cast: 'string' },
+        { field: '_id', dir, cast: 'id' }
+      ]
+    case 'status':
+      return [
+        { field: 'statusRank', dir, cast: 'number' },
+        { field: 'order', dir: 1, cast: 'number' },
+        { field: '_id', dir: 1, cast: 'id' }
+      ]
+    default:
+      return [
+        { field: 'updatedAt', dir, cast: 'date' },
+        { field: '_id', dir, cast: 'id' }
+      ]
+  }
+}
+
+function sortSpecFor(pairs: SortPair[]): Record<string, 1 | -1> {
+  return Object.fromEntries(pairs.map((p) => [p.field, p.dir]))
+}
+
+function encodeKeysetCursor(pairs: SortPair[], doc: HydratedDocument<IssueDoc>): string {
+  const values = pairs.map((p) => {
+    const v = (doc as unknown as Record<string, unknown>)[p.field]
+    if (v == null) return null
+    if (p.cast === 'date') return v instanceof Date ? v.toISOString() : String(v)
+    if (p.cast === 'id') return String(v)
+    return v as string | number
+  })
+  return encodeCursor({ k: values })
+}
+
+// Keyset predicate: (a1,...,an) strictly after the cursor tuple, i.e.
+// OR over k of (equal on fields < k AND field_k strictly before/after by dir).
+function keysetFilter(pairs: SortPair[], raw: unknown[]): Record<string, unknown> | null {
+  if (!Array.isArray(raw) || raw.length !== pairs.length) return null
+  const vals: Array<string | number | Date | mongoose.Types.ObjectId | null> = raw.map((v, i) => {
+    const p = pairs[i]
+    if (v == null) return null
+    switch (p.cast) {
+      case 'date': {
+        const d = new Date(String(v))
+        return Number.isNaN(d.getTime()) ? null : d
+      }
+      case 'number': {
+        const n = Number(v)
+        return Number.isFinite(n) ? n : null
+      }
+      case 'id':
+        return mongoose.isValidObjectId(String(v)) ? new mongoose.Types.ObjectId(String(v)) : null
+      default:
+        return String(v)
+    }
+  })
+  if (vals.some((v) => v == null)) return null
+
+  const or: Array<Record<string, unknown>> = []
+  for (let k = 0; k < pairs.length; k++) {
+    const clause: Record<string, unknown> = {}
+    for (let j = 0; j < k; j++) clause[pairs[j].field] = vals[j]
+    clause[pairs[k].field] = { [pairs[k].dir === 1 ? '$gt' : '$lt']: vals[k] }
+    or.push(clause)
+  }
+  return or.length === 1 ? or[0] : { $or: or }
+}
+
 router.get(
   '/workspaces/:wsId/issues',
   requireAuth,
@@ -61,37 +147,25 @@ router.get(
       filter.$or = [{ title: rx }, { description: rx }]
     }
 
-    const cursorData = decodeCursor<{ i?: string }>(q.cursor)
-    const dir = q.dir === 'asc' ? 1 : -1
+    const cursorData = decodeCursor<{ k?: unknown[] }>(q.cursor)
+    const dir: 1 | -1 = q.dir === 'asc' ? 1 : -1
+    const pairs = sortPairsFor(q.sort, dir)
 
-    let sortSpec: Record<string, 1 | -1>
-    switch (q.sort) {
-      case 'created':
-        sortSpec = { createdAt: dir, _id: dir }
-        break
-      case 'priority':
-        sortSpec = { priority: dir, updatedAt: -1 }
-        break
-      case 'title':
-        sortSpec = { title: dir, _id: dir }
-        break
-      case 'status':
-        sortSpec = { statusRank: dir, order: 1 }
-        break
-      default:
-        sortSpec = { updatedAt: dir, _id: dir }
-    }
-
-    if (cursorData?.i) {
-      const cid = new mongoose.Types.ObjectId(cursorData.i)
-      const primary = Object.keys(sortSpec)[0]
-      if (primary === '_id') filter._id = { [dir === 1 ? '$gt' : '$lt']: cid }
-      else filter._id = { [dir === 1 ? '$gt' : '$lt']: cid }
-      if (!('_id' in sortSpec)) sortSpec._id = dir
+    if (cursorData?.k) {
+      // search already occupies $or; keep both predicates via $and
+      const kf = keysetFilter(pairs, cursorData.k)
+      if (kf) {
+        if (filter.$or) {
+          filter.$and = [{ $or: filter.$or as unknown[] }, kf]
+          delete filter.$or
+        } else {
+          Object.assign(filter, kf)
+        }
+      }
     }
 
     const docs = await Issue.find(filter)
-      .sort(sortSpec as Record<string, 1 | -1>)
+      .sort(sortSpecFor(pairs))
       .limit(q.limit + 1)
       .exec()
     const hasMore = docs.length > q.limit
@@ -99,7 +173,8 @@ router.get(
     const last = page[page.length - 1]
     res.json({
       items: page.map(issueJson),
-      nextCursor: hasMore && last ? encodeCursor({ i: String(last._id) }) : null
+      nextCursor:
+        hasMore && last ? encodeKeysetCursor(pairs, last as HydratedDocument<IssueDoc>) : null
     })
   })
 )

@@ -32,6 +32,7 @@ class LiveSocket {
   private lastSeq: Record<string, number> = {}
   private subscribed = new Set<string>()
   private handlers = new Set<EventHandler>()
+  private truncateHandlers = new Set<(wsId: string) => void>()
   private lastTypingSent = 0
 
   connect(token: string): void {
@@ -102,11 +103,20 @@ class LiveSocket {
     const sinceSeq = this.lastSeq[wsId]
     const payload: Record<string, unknown> = { workspaceId: wsId }
     if (typeof sinceSeq === 'number' && sinceSeq > 0) payload.sinceSeq = sinceSeq
-    this.socket?.emit('ws.subscribe', payload, (res: { ok: boolean; error?: string }) => {
-      if (!res.ok && res.error === 'forbidden') {
-        this.subscribed.delete(wsId)
+    this.socket?.emit(
+      'ws.subscribe',
+      payload,
+      (res: { ok: boolean; error?: string; truncated?: boolean }) => {
+        if (!res.ok && res.error === 'forbidden') {
+          this.subscribed.delete(wsId)
+          return
+        }
+        if (res.ok && res.truncated) {
+          // replay cap exceeded: partial batch would be wrong, refetch instead
+          for (const h of this.truncateHandlers) h(wsId)
+        }
       }
-    })
+    )
   }
 
   subscribe(wsId: string): void {
@@ -123,6 +133,11 @@ class LiveSocket {
   onEvents(h: EventHandler): () => void {
     this.handlers.add(h)
     return () => this.handlers.delete(h)
+  }
+
+  onTruncate(h: (wsId: string) => void): () => void {
+    this.truncateHandlers.add(h)
+    return () => this.truncateHandlers.delete(h)
   }
 
   private onEvent(e: EventJSON): void {
