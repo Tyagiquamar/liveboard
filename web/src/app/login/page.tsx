@@ -53,7 +53,7 @@ export default function LoginPage() {
           <h1 className="text-sm font-semibold">Try the live demo</h1>
           <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
             Pick an identity to jump straight into the seeded <span className="text-ink-muted">Acme Product Team</span> workspace.
-            Open a second browser window as another member to watch changes sync in real time.
+            On the hosted demo, open a second <span className="text-ink-muted">tab of this same browser</span> as another member to watch changes sync (demo state is per-browser localStorage). With the self-hosted backend, any second browser or machine syncs live.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {DEMO_USERS.map((u) => (

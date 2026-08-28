@@ -340,6 +340,32 @@ function matchQuery(issue: Issue, q: string | null): boolean {
 }
 
 export async function demoApi<T>(path: string, opts: ApiOpts = {}): Promise<T> {
+  // Cross-tab safety: demo state lives in shared localStorage. Serialize the
+  // read-modify-write cycle with a Web Lock so two tabs acting at once cannot
+  // clobber each other's events (previously: lost updates + duplicate seq ids).
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : null
+  if (!locks) {
+    refreshFromStore()
+    return handleDemoApi<T>(path, opts)
+  }
+  return locks.request('lb_demo_store', () => {
+    refreshFromStore()
+    return handleDemoApi<T>(path, opts)
+  }) as Promise<T>
+}
+
+function refreshFromStore(): void {
+  if (typeof window === 'undefined') return
+  const raw = window.localStorage.getItem(STORE_KEY)
+  if (!raw) return
+  try {
+    current = JSON.parse(raw) as DemoState
+  } catch {
+    /* keep cached copy */
+  }
+}
+
+async function handleDemoApi<T>(path: string, opts: ApiOpts = {}): Promise<T> {
   await sleep(120)
   const method = opts.method ?? 'GET'
   const [rawPath, rawQuery] = path.split('?')

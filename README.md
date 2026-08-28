@@ -26,11 +26,11 @@ Real-time collaborative project workspace — a lightweight Linear × Notion whe
 
 1. Open the app → **identity picker**: pick **Alice Nguyen**, **Bob Marín**, **Carol Diaz** or **Dave Okafor** (no signup needed for the demo).
 2. You land in the seeded **Acme Product Team** workspace — Kanban board with 28 realistic issues across Platform / Web App / Mobile projects.
-3. **Open a second browser window** (or normal + incognito) and pick a different identity.
-4. Drag a card in one window → watch it fly in the other. Presence avatars appear top-right; open the same issue in both and you'll see each other's viewer chip and typing dots.
+3. **Open the board as a second member:**
+   - *Public Vercel demo:* open a second **tab in the same browser** (demo state lives in `localStorage` and syncs via storage events — incognito windows and other browsers have separate storage and will NOT sync).
+   - *Real backend (local Docker):* any mix of browsers, windows or machines works — sync happens over Socket.IO.
+4. Drag a card in one view → watch it fly in the other. Presence avatars appear top-right; open the same issue in both and you'll see each other's viewer chip and typing dots (presence/typing require the real backend).
 5. Comment with `@mentions` — the mentioned user gets a toast. Switch **Table** view for inline editing, **Activity** for the live event feed. `⌘K` opens the command menu, `?` shows shortcuts.
-
-(On the Vercel demo deployment, step 3 means a second *tab of the same browser* — see Live demo above.)
 
 ## Architecture
 
