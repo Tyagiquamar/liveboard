@@ -11,9 +11,10 @@ import { errorHandler } from './util/http'
 
 export function createApp(): express.Express {
   const app = express()
+  console.log('[cors] allowed origins:', config.corsOrigins.join(', '))
   app.use(
     cors({
-      origin: [config.clientOrigin, 'http://localhost:3000'],
+      origin: config.corsOrigins,
       credentials: false
     })
   )

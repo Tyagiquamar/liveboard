@@ -155,7 +155,7 @@ export class RealtimeHub {
 
   constructor(server: http.Server) {
     this.io = new Server(server, {
-      cors: { origin: [config.clientOrigin, 'http://localhost:3000'], methods: ['GET', 'POST'] }
+      cors: { origin: config.corsOrigins, methods: ['GET', 'POST'] }
     })
 
     setPublisher((room, event, data) => {
