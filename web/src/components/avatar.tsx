@@ -28,7 +28,7 @@ export function Avatar({
       className={cn(
         'relative inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold text-white',
         ring && 'ring-2 ring-panel',
-        (!src || imgFailed) && !color && 'bg-[#6e79f4]',
+        (!src || imgFailed) && !color && 'bg-[#4f6bed]',
         className
       )}
       aria-label={name}
@@ -46,7 +46,7 @@ export function Avatar({
       ) : (
         <span
           style={{
-            background: color ?? '#6e79f4',
+            background: color ?? '#4f6bed',
             position: 'absolute',
             inset: 0,
             borderRadius: '9999px',

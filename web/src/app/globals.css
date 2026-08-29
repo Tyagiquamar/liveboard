@@ -4,7 +4,7 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#7e88f6] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#5f7bf0] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-hoverbg hover:text-ink disabled:opacity-50;
@@ -43,7 +43,7 @@ body {
 }
 
 ::selection {
-  background: rgba(110, 121, 244, 0.35);
+  background: rgba(79, 107, 237, 0.35);
 }
 
 ::-webkit-scrollbar {
@@ -60,7 +60,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid #6e79f4;
+  outline: 2px solid #4f6bed;
   outline-offset: 1px;
   border-radius: 4px;
 }

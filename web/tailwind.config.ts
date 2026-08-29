@@ -16,8 +16,8 @@ const config: Config = {
           faint: '#6c707b'
         },
         accent: {
-          DEFAULT: '#6e79f4',
-          soft: '#2a2d4a'
+          DEFAULT: '#4f6bed',
+          soft: '#252c49'
         },
         danger: '#ef5350',
         warn: '#e9b44c',
