@@ -17,6 +17,7 @@ function GlobalConnBanner() {
   if (status === 'online') return null
   const map = {
     connecting: { text: 'Reconnecting…', cls: 'bg-warn/15 text-warn border-warn/30' },
+    waking: { text: 'Starting demo backend — free tier may take ~1 min to wake…', cls: 'bg-warn/15 text-warn border-warn/30' },
     offline: { text: "You're offline — edits are queued", cls: 'bg-danger/10 text-danger border-danger/30' },
     error: { text: 'Connection problem — retrying', cls: 'bg-danger/10 text-danger border-danger/30' }
   } as const

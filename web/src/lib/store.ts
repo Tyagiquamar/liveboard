@@ -31,7 +31,7 @@ export const useSession = create<SessionState>((set) => ({
   markHydrated: () => set({ hydrated: true })
 }))
 
-export type ConnStatus = 'connecting' | 'online' | 'offline' | 'error'
+export type ConnStatus = 'connecting' | 'waking' | 'online' | 'offline' | 'error'
 
 interface ConnState {
   status: ConnStatus

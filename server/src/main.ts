@@ -9,8 +9,8 @@ async function bootstrap(): Promise<void> {
   const app = createApp()
   const server = http.createServer(app)
   await attachRealtime(server)
-  server.listen(config.port, () => {
-    console.log(`liveboard api+ws listening on http://localhost:${config.port}`)
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`liveboard api+ws listening on 0.0.0.0:${config.port}`)
   })
 
   const shutdown = (): void => {

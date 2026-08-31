@@ -140,14 +140,14 @@ function ConnBadge({ status }: { status: string }) {
       title={`Connection: ${status}`}
       className={`hidden items-center gap-1.5 text-xs md:flex ${status === 'offline' || status === 'error' ? 'text-danger' : 'text-warn'}`}
     >
-      {status === 'connecting' ? (
+      {status === 'connecting' || status === 'waking' ? (
         <RefreshCw size={12} className="animate-spin" />
       ) : status === 'offline' ? (
         <WifiOff size={12} />
       ) : (
         <Wifi size={12} />
       )}
-      {status}
+      {status === 'waking' ? 'waking demo backend…' : status}
     </span>
   )
 }

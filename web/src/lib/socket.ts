@@ -34,6 +34,7 @@ class LiveSocket {
   private handlers = new Set<EventHandler>()
   private truncateHandlers = new Set<(wsId: string) => void>()
   private lastTypingSent = 0
+  private attemptStartedAt = 0
   private demoUser: { id: string; name: string; username: string; color: string } | null = null
 
   connect(token: string): void {
@@ -46,6 +47,7 @@ class LiveSocket {
     }
     if (this.socket) return
     useConn.getState().setStatus('connecting')
+    this.attemptStartedAt = Date.now()
     const socket = io(WS_URL, {
       auth: { token },
       reconnectionDelayMax: 8000,
@@ -62,6 +64,7 @@ class LiveSocket {
 
     socket.on('disconnect', (reason) => {
       if (reason === 'io client disconnect') return
+      this.attemptStartedAt = Date.now()
       useConn.getState().setStatus(navigator.onLine ? 'connecting' : 'offline')
     })
 
@@ -75,7 +78,10 @@ class LiveSocket {
         window.location.href = '/login'
         return
       }
-      useConn.getState().setStatus('error')
+      const elapsed = Date.now() - this.attemptStartedAt
+      // Free demo backend may be cold-starting (~60-90s): show a calm
+      // wake-up state instead of an immediate error, keep retrying.
+      useConn.getState().setStatus(elapsed > 90_000 ? 'error' : elapsed > 5_000 ? 'waking' : 'connecting')
     })
 
     socket.on('event', (e: EventJSON) => this.onEvent(e))
