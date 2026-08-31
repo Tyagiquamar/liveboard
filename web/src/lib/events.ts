@@ -112,7 +112,13 @@ export function attachEventListener(qc: QueryClient): () => void {
     prependActivity(qc, ev)
 
     switch (ev.type) {
-      case 'issue.created':
+      case 'issue.created': {
+        const issue = ev.data.issue as Issue | undefined
+        if (!issue) break
+        if (isDirty(issue.id)) break
+        insertIssueEverywhere(qc, ev.workspaceId, { ...issue, workspaceId: ev.workspaceId })
+        break
+      }
       case 'issue.updated': {
         const issue = ev.data.issue as Issue | undefined
         if (!issue) break
