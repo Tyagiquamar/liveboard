@@ -125,15 +125,18 @@ The suite prefers `TEST_MONGO_URI` (any throwaway Mongo) and falls back to `mong
 
 Full split-deploy runbook (API on a long-running host, Mongo, web on Vercel): **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
-Current hosting status:
+Current hosting:
 
-- **Web (demo mode)**: live on Vercel — https://liveboard-red.vercel.app (built with `NEXT_PUBLIC_DEMO=1`; no backend required).
-- **API + Socket.IO**: **not hosted** — the Railway trial on the owner account expired and Socket.IO needs a long-running host (not serverless). To bring the full multi-user demo online: renew Railway/Render (or use Fly/VPS), provision Mongo, and follow docs/DEPLOY.md — everything is prepared and verified locally.
+- **Web**: https://liveboard-red.vercel.app (Vercel) — the full multi-user app against the live backend below.
+- **Realtime backend (API + Socket.IO)**: https://liveboard-api-obye.onrender.com (Render Web Service).
+- **Database**: MongoDB Atlas.
+
+> The public demo backend runs on a free service and may take up to about a minute to wake after inactivity; the frontend shows a brief “waking demo backend…” state and reconnects automatically.
 
 ## Known limitations
 
-- **No hosted multi-user demo** — the Socket.IO backend needs a long-running host and the owner's Railway trial expired; the Vercel deployment therefore runs in demo mode (in-browser mock, single browser). See Deployment above.
-- Demo mode is a mock: no cross-browser sync, presence shows only you, data lives in localStorage per browser.
+- **Cold start**: the free realtime backend sleeps when idle and wakes on the next visit (~1 min). This is expected; no manual refresh is needed.
+- A frontend-only demo mode (`NEXT_PUBLIC_DEMO=1`) is still available for backend-less hosting; it is a mock (single browser, localStorage) and is not what the public URL runs.
 - Presence/typing/viewers are in-memory (per instance); scale beyond one API instance requires the Redis adapter (wired behind `REDIS_URL`, but presence registries themselves aren't shared yet).
 - Replay cap of 2000 events falls back to a full refetch rather than partial application.
 - No email verification/password reset; demo-grade auth.
